@@ -1,103 +1,82 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 
-export default function UploadPage() {
+interface Item {
+  name: string;
+  quantity: number;
+  price: string;
+  carbonFootprint: number;
+  waterUsage: number;
+  packagingScore: number;
+  ecoAlternative: string;
+}
+
+interface AnalysisData {
+  store: string;
+  date: string;
+  total: string;
+  items: Item[];
+  totalCarbonFootprint: number;
+  totalWaterUsage: number;
+  avgPackagingScore: number;
+  ecoScore: number;
+  recommendations: string[];
+}
+
+export default function AnalyzePage() {
+  const searchParams = useSearchParams();
   const router = useRouter();
-  const [file, setFile] = useState<File | null>(null);
-  const [preview, setPreview] = useState<string | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [data, setData] = useState<AnalysisData | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFile = e.target.files?.[0];
-    if (selectedFile) {
-      setFile(selectedFile);
-      setError(null);
-      
-      // Create preview for images only
-      if (selectedFile.type.startsWith('image/')) {
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          setPreview(reader.result as string);
-        };
-        reader.readAsDataURL(selectedFile);
-      } else if (selectedFile.type === 'application/pdf') {
-        setPreview(null); // No preview for PDFs
-      }
-    }
-  };
-
-  const handleUpload = async () => {
-    if (!file) {
-      setError('Please select a file first');
+  useEffect(() => {
+    const id = searchParams.get('id');
+    
+    if (!id) {
+      router.push('/upload');
       return;
     }
 
-    setUploading(true);
-    setError(null);
+    const stored = sessionStorage.getItem(`analysis_${id}`);
+    
+    if (!stored) {
+      router.push('/upload');
+      return;
+    }
 
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-
-      console.log('Uploading file:', file.name, file.type);
-
-      const response = await fetch('/api/analyze', {
-        method: 'POST',
-        body: formData,
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.error || result.details || 'Failed to analyze receipt');
-      }
-
-      if (result.success && result.data) {
-        console.log('Analysis successful:', result.id);
-        
-        // CRITICAL: Store the analysis data in sessionStorage BEFORE navigating
-        sessionStorage.setItem(`analysis_${result.id}`, JSON.stringify(result.data));
-        
-        // Add a small delay to ensure storage completes
-        await new Promise(resolve => setTimeout(resolve, 100));
-        
-        // Navigate to analysis page
-        router.push(`/analyze?id=${result.id}`);
-      } else {
-        throw new Error('Invalid response from server');
-      }
+      const parsedData = JSON.parse(stored);
+      setData(parsedData);
     } catch (err) {
-      console.error('Upload error:', err);
-      setError(err instanceof Error ? err.message : 'Failed to upload and analyze receipt');
-      setUploading(false);
+      console.error('Failed to parse analysis data:', err);
+      router.push('/upload');
+    } finally {
+      setLoading(false);
     }
-  };
+  }, [searchParams, router]);
 
-  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    const droppedFile = e.dataTransfer.files[0];
-    if (droppedFile) {
-      setFile(droppedFile);
-      setError(null);
-      
-      if (droppedFile.type.startsWith('image/')) {
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          setPreview(reader.result as string);
-        };
-        reader.readAsDataURL(droppedFile);
-      } else {
-        setPreview(null);
-      }
-    }
-  };
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-green-50 via-amber-50 to-green-100 flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-6xl mb-4 animate-bounce">🌱</div>
+          <p className="text-2xl font-black text-orange-900">Loading Analysis...</p>
+        </div>
+      </div>
+    );
+  }
 
-  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
+  if (!data) {
+    return null;
+  }
+
+  const getPackagingColor = (score: number) => {
+    if (score <= 3) return 'text-green-600';
+    if (score <= 6) return 'text-yellow-600';
+    return 'text-red-600';
   };
 
   return (
@@ -112,93 +91,170 @@ export default function UploadPage() {
         
         <nav className="relative z-10 px-6 py-4 flex justify-between items-center max-w-7xl mx-auto">
           <Link href="/" className="text-2xl font-black text-orange-900">GREEN RECEIPT</Link>
+          <Link 
+            href="/upload"
+            className="px-4 py-2 bg-orange-600 text-white font-bold border-2 border-orange-900 hover:bg-orange-700 transition rounded"
+          >
+            UPLOAD NEW
+          </Link>
         </nav>
       </div>
 
-      {/* Upload Content */}
       <div className="py-12 px-6">
-        <div className="max-w-2xl mx-auto">
+        <div className="max-w-6xl mx-auto">
           
-          <div className="text-center mb-8">
-            <h1 className="text-5xl font-black text-orange-900 mb-4"
-                style={{textShadow: '4px 4px 0px #fed7aa'}}>
-              UPLOAD YOUR RECEIPT
-            </h1>
-            <p className="text-lg text-gray-700 font-semibold">
-              📸 Take a photo or upload a PDF to see your environmental impact!
-            </p>
-          </div>
-
-          {/* Upload Area */}
-          <div 
-            className="bg-white border-8 border-dashed border-orange-900 rounded-2xl p-12 text-center mb-6 hover:bg-yellow-50 transition cursor-pointer"
-            onDrop={handleDrop}
-            onDragOver={handleDragOver}
-            onClick={() => document.getElementById('fileInput')?.click()}
-          >
-            {preview ? (
-              <div className="mb-4">
-                <img src={preview} alt="Preview" className="max-h-64 mx-auto rounded-lg border-4 border-orange-900" />
-              </div>
-            ) : file?.type === 'application/pdf' ? (
-              <div className="mb-4">
-                <div className="text-6xl mb-2">📄</div>
-                <p className="font-bold text-orange-900">{file.name}</p>
-              </div>
-            ) : (
-              <div className="text-6xl mb-4">📸</div>
-            )}
-            
-            <input
-              id="fileInput"
-              type="file"
-              accept="image/*,application/pdf"
-              onChange={handleFileChange}
-              className="hidden"
-            />
-            
-            <p className="text-xl font-black text-orange-900 mb-2">
-              {file ? 'FILE SELECTED' : 'CLICK OR DROP FILE HERE'}
-            </p>
-            <p className="text-sm text-gray-600 font-semibold">
-              Accepts: JPG, PNG, WebP, PDF
-            </p>
-          </div>
-
-          {/* Error Message */}
-          {error && (
-            <div className="bg-red-100 border-4 border-red-600 rounded-lg p-4 mb-6">
-              <p className="text-red-900 font-bold">⚠️ {error}</p>
+          {/* Header Section */}
+          <div className="text-center mb-12">
+            <div className="inline-block mb-4 px-6 py-2 bg-orange-500 text-white font-black text-sm tracking-widest rotate-[-1deg] shadow-lg border-4 border-orange-700">
+              STEP 2 OF 2
             </div>
-          )}
+            <h1 className="text-5xl md:text-6xl font-black text-orange-900 mb-4"
+                style={{textShadow: '3px 3px 0px #fed7aa'}}>
+              ENVIRONMENTAL IMPACT
+            </h1>
+            <div className="flex items-center justify-center gap-4 text-lg font-semibold text-gray-700 flex-wrap">
+              <span>🏪 {data.store}</span>
+              <span>•</span>
+              <span>📅 {data.date}</span>
+              <span>•</span>
+              <span>💰 {data.total}</span>
+            </div>
+          </div>
 
-          {/* Upload Button */}
-          <button
-            onClick={handleUpload}
-            disabled={!file || uploading}
-            className={`w-full py-6 text-2xl font-black rounded-xl border-4 transition-all duration-150 ${
-              !file || uploading
-                ? 'bg-gray-300 border-gray-500 text-gray-600 cursor-not-allowed'
-                : 'bg-green-600 border-orange-900 text-white shadow-[6px_6px_0px_0px_rgba(124,45,18,1)] hover:shadow-[3px_3px_0px_0px_rgba(124,45,18,1)] hover:translate-x-[3px] hover:translate-y-[3px]'
-            }`}
-          >
-            {uploading ? (
-              <span className="flex items-center justify-center gap-3">
-                <span className="animate-spin">🔄</span>
-                ANALYZING...
-              </span>
-            ) : (
-              '🌱 ANALYZE RECEIPT'
-            )}
-          </button>
+          {/* Eco Score Card */}
+          <div className="mb-12 bg-white border-8 border-orange-900 rounded-2xl p-8 shadow-2xl">
+            <div className="text-center mb-6">
+              <h2 className="text-3xl font-black text-orange-900 mb-2">YOUR ECO SCORE</h2>
+              <p className="text-gray-600 font-semibold">Lower is better for the planet!</p>
+            </div>
+            
+            <div className="flex items-center justify-center mb-6">
+              <div className="relative w-48 h-48">
+                <svg className="transform -rotate-90 w-48 h-48">
+                  <circle
+                    cx="96"
+                    cy="96"
+                    r="80"
+                    stroke="#fed7aa"
+                    strokeWidth="16"
+                    fill="transparent"
+                  />
+                  <circle
+                    cx="96"
+                    cy="96"
+                    r="80"
+                    stroke={data.ecoScore >= 70 ? '#22c55e' : data.ecoScore >= 40 ? '#eab308' : '#ef4444'}
+                    strokeWidth="16"
+                    fill="transparent"
+                    strokeDasharray={`${(data.ecoScore / 100) * 502.4} 502.4`}
+                    strokeLinecap="round"
+                  />
+                </svg>
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <span className="text-5xl font-black text-orange-900">{data.ecoScore}</span>
+                </div>
+              </div>
+            </div>
 
-          {/* Info */}
-          <div className="mt-8 p-6 bg-gradient-to-r from-green-100 to-lime-100 border-4 border-orange-900 rounded-xl">
-            <p className="text-sm font-bold text-gray-700">
-              💡 <strong>TIP:</strong> Make sure your receipt is clear and readable. 
-              We'll calculate the carbon footprint, water usage, and packaging waste 
-              of each item and suggest eco-friendly alternatives!
-            </p>
+            <div className="grid md:grid-cols-3 gap-6">
+              <div className="bg-red-50 border-4 border-red-600 rounded-xl p-6 text-center">
+                <div className="text-4xl mb-2">🌍</div>
+                <div className="text-3xl font-black text-red-900 mb-1">{data.totalCarbonFootprint.toFixed(2)}</div>
+                <div className="text-sm font-bold text-gray-700">kg CO₂e</div>
+              </div>
+              
+              <div className="bg-blue-50 border-4 border-blue-600 rounded-xl p-6 text-center">
+                <div className="text-4xl mb-2">💧</div>
+                <div className="text-3xl font-black text-blue-900 mb-1">{data.totalWaterUsage.toFixed(0)}</div>
+                <div className="text-sm font-bold text-gray-700">liters</div>
+              </div>
+              
+              <div className="bg-orange-50 border-4 border-orange-600 rounded-xl p-6 text-center">
+                <div className="text-4xl mb-2">📦</div>
+                <div className="text-3xl font-black text-orange-900 mb-1">{data.avgPackagingScore.toFixed(1)}/10</div>
+                <div className="text-sm font-bold text-gray-700">Packaging Impact</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Items List */}
+          <div className="mb-12">
+            <h2 className="text-4xl font-black text-orange-900 mb-6 text-center">ITEM BREAKDOWN</h2>
+            <div className="space-y-4">
+              {data.items.map((item, index) => (
+                <div key={index} className="bg-white border-6 border-orange-900 rounded-xl p-6 shadow-lg hover:shadow-xl transition">
+                  <div className="flex justify-between items-start mb-4">
+                    <div>
+                      <h3 className="text-2xl font-black text-orange-900">{item.name}</h3>
+                      <p className="text-gray-600 font-semibold">Qty: {item.quantity} • {item.price}</p>
+                    </div>
+                  </div>
+
+                  <div className="grid md:grid-cols-3 gap-4 mb-4">
+                    <div className="bg-red-50 border-2 border-red-400 rounded-lg p-3">
+                      <div className="text-sm font-bold text-gray-600 mb-1">Carbon</div>
+                      <div className="text-xl font-black text-red-900">{item.carbonFootprint} kg CO₂e</div>
+                    </div>
+                    
+                    <div className="bg-blue-50 border-2 border-blue-400 rounded-lg p-3">
+                      <div className="text-sm font-bold text-gray-600 mb-1">Water</div>
+                      <div className="text-xl font-black text-blue-900">{item.waterUsage}L</div>
+                    </div>
+                    
+                    <div className="bg-orange-50 border-2 border-orange-400 rounded-lg p-3">
+                      <div className="text-sm font-bold text-gray-600 mb-1">Packaging</div>
+                      <div className={`text-xl font-black ${getPackagingColor(item.packagingScore)}`}>
+                        {item.packagingScore}/10
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-green-50 border-2 border-green-400 rounded-lg p-4">
+                    <div className="flex items-start gap-2">
+                      <span className="text-2xl">💡</span>
+                      <div>
+                        <div className="font-bold text-green-900 mb-1">Eco-Friendly Alternative:</div>
+                        <p className="text-sm text-gray-700">{item.ecoAlternative}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Recommendations */}
+          <div className="bg-gradient-to-r from-green-100 to-lime-100 border-8 border-orange-900 rounded-2xl p-8 shadow-2xl">
+            <h2 className="text-4xl font-black text-orange-900 mb-6 text-center">
+              🌱 YOUR ACTION PLAN
+            </h2>
+            <div className="space-y-4">
+              {data.recommendations.map((rec, index) => (
+                <div key={index} className="flex items-start gap-4 bg-white border-4 border-green-600 rounded-lg p-4">
+                  <div className="flex-shrink-0 w-8 h-8 bg-green-600 text-white font-black rounded-full flex items-center justify-center">
+                    {index + 1}
+                  </div>
+                  <p className="text-lg font-semibold text-gray-800 flex-1">{rec}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div className="mt-12 flex flex-col sm:flex-row gap-4 justify-center">
+            <Link
+              href="/upload"
+              className="px-8 py-4 bg-green-600 text-white text-xl font-black border-4 border-orange-900 rounded-xl shadow-[6px_6px_0px_0px_rgba(124,45,18,1)] hover:shadow-[3px_3px_0px_0px_rgba(124,45,18,1)] hover:translate-x-[3px] hover:translate-y-[3px] transition-all duration-150 text-center"
+            >
+              📸 ANALYZE ANOTHER RECEIPT
+            </Link>
+            
+            <Link
+              href="/"
+              className="px-8 py-4 bg-white text-orange-900 text-xl font-black border-4 border-orange-900 rounded-xl shadow-[6px_6px_0px_0px_rgba(124,45,18,1)] hover:shadow-[3px_3px_0px_0px_rgba(124,45,18,1)] hover:translate-x-[3px] hover:translate-y-[3px] transition-all duration-150 text-center"
+            >
+              🏠 BACK TO HOME
+            </Link>
           </div>
         </div>
       </div>

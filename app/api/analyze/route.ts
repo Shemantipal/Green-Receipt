@@ -1,58 +1,8 @@
+import { GoogleGenAI } from "@google/genai";
 import { NextResponse } from "next/server";
-import PDFParser from "pdf2json";
-import Tesseract from "tesseract.js-node";
-import fs from "fs";
-import path from "path";
 
-export const runtime = "nodejs";
+const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
 
-// ========= PDF TEXT EXTRACTOR (FAST, TEXT-BASED PDFs) ========= //
-async function extractTextWithPdf2Json(buffer: Buffer): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const pdfParser = new PDFParser();
-
-    pdfParser.on("pdfParser_dataError", (err: any) => {
-      const safeErr =
-        (err as any)?.parserError ??
-        err ??
-        new Error("Unknown PDF parse error");
-      reject(safeErr);
-    });
-
-    pdfParser.on("pdfParser_dataReady", () => {
-      try {
-        const text = pdfParser
-          .getRawTextContent()
-          .replace(/\s+/g, " ")
-          .trim();
-
-        resolve(text);
-      } catch (e) {
-        reject(e);
-      }
-    });
-
-    pdfParser.parseBuffer(buffer);
-  });
-}
-
-// ========= OCR (SCANNED PDFs, IMAGES) ========= //
-async function extractUsingOCR(buffer: Buffer): Promise<string> {
-  const tmpPath = path.join(process.cwd(), `tmp_ocr_${Date.now()}.png`);
-  fs.writeFileSync(tmpPath, buffer);
-
-  try {
-    const result = await Tesseract.recognize(tmpPath, "eng", {
-      logger: () => {}, // disable noisy logs
-    });
-
-    return result.data.text.trim();
-  } finally {
-    if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath);
-  }
-}
-
-// ========= MAIN API ROUTE ========= //
 export async function POST(req: Request) {
   try {
     const form = await req.formData();
@@ -62,46 +12,96 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "No file uploaded" }, { status: 400 });
     }
 
-    const buffer = Buffer.from(await file.arrayBuffer());
-    const mime = file.type;
+    console.log("FILE RECEIVED →", file.type, file.name);
 
-    let extractedText = "";
+    const bytes = await file.arrayBuffer();
+    const buffer = Buffer.from(bytes);
+    const base64 = buffer.toString("base64");
 
-    console.log("FILE RECEIVED →", mime);
-
-    // ====== CASE 1: PDF → Try text extraction first ======
-    if (mime === "application/pdf") {
-      console.log("→ Trying PDF text extraction (pdf2json)");
-
-      try {
-        extractedText = await extractTextWithPdf2Json(buffer);
-
-        // Many PDFs return 0 text — detect that
-        if (!extractedText || extractedText.length < 5) {
-          console.log("→ PDF is likely image-based → Falling back to OCR");
-          extractedText = await extractUsingOCR(buffer);
-        }
-      } catch (e) {
-        console.log("pdf2json failed → OCR fallback", e);
-        extractedText = await extractUsingOCR(buffer);
-      }
+    let mimeType = file.type;
+    if (!mimeType || mimeType === "application/octet-stream") {
+      if (file.name.toLowerCase().endsWith(".pdf")) mimeType = "application/pdf";
+      else if (file.name.match(/\.(jpg|jpeg)$/i)) mimeType = "image/jpeg";
+      else if (file.name.endsWith(".png")) mimeType = "image/png";
+      else if (file.name.endsWith(".webp")) mimeType = "image/webp";
     }
 
-    // ====== CASE 2: Image Upload → OCR directly ======
-    else {
-      console.log("→ Non-PDF file, using OCR");
-      extractedText = await extractUsingOCR(buffer);
+    console.log("→ Using Gemini Vision API with mime type:", mimeType);
+
+    const prompt = `
+You are an environmental impact analyzer. Analyze this receipt image and extract all items purchased.
+
+Return ONLY a valid JSON object in this format:
+{ ... }
+`;
+
+
+    const response = await genAI.models.generateContent({
+      model: "gemini-3-pro-preview",  
+      contents: [
+        {
+          role: "user",
+          parts: [
+            {
+              inlineData: { mimeType, data: base64 },
+            },
+            {
+              text: prompt,
+            },
+          ],
+        },
+      ],
+    });
+
+    let text = response.text?.trim();
+
+    if (!text) {
+      return NextResponse.json(
+        { error: "Empty response from AI", details: "No text generated" },
+        { status: 500 }
+      );
+    }
+
+    console.log("→ Gemini raw response:", text.substring(0, 200));
+
+    text = text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+
+    let analysisData;
+
+    try {
+      analysisData = JSON.parse(text);
+    } catch (err) {
+      console.error("JSON Parse Error:", err, "Raw text:", text);
+      return NextResponse.json(
+        { error: "Failed to parse AI response", details: text },
+        { status: 500 }
+      );
+    }
+
+    if (analysisData.error) {
+      return NextResponse.json({ error: analysisData.error }, { status: 400 });
+    }
+
+    if (!analysisData.items || analysisData.items.length === 0) {
+      return NextResponse.json(
+        { error: "No items found in receipt. Please upload a clearer image." },
+        { status: 400 }
+      );
     }
 
     return NextResponse.json({
-  success: true,
-  id: Date.now(),         // unique analysis ID
-  data: { text: extractedText }
-});
-
-
+      success: true,
+      id: Date.now(),
+      data: analysisData,
+    });
   } catch (err: any) {
     console.error("ANALYSIS FAILURE:", err);
-    return NextResponse.json({ error: err?.message || "Unknown error" }, { status: 500 });
+    return NextResponse.json(
+      {
+        error: "Analysis failed",
+        details: err?.message || "Unknown error",
+      },
+      { status: 500 }
+    );
   }
 }
