@@ -39,10 +39,8 @@ export default function UploadPage() {
       
       const result = await response.json();
       
-      // Store the analysis data in sessionStorage so the analyze page can access it
       sessionStorage.setItem(`analysis_${result.id}`, JSON.stringify(result.data));
       
-      // Redirect to results page
       router.push(`/analyze?id=${result.id}`);
     } catch (error) {
       console.error('Analysis failed:', error);
@@ -53,7 +51,7 @@ export default function UploadPage() {
 
   return (
     <main className="min-h-screen bg-gradient-to-b from-green-50 via-amber-50 to-green-100">
-      {/* Header */}
+
       <div className="bg-yellow-400 border-b-8 border-orange-600 relative overflow-hidden">
         <div className="absolute inset-0 opacity-10">
           <div className="absolute inset-0" style={{
@@ -72,10 +70,10 @@ export default function UploadPage() {
         </nav>
       </div>
 
-      {/* Main Content */}
+   
       <div className="py-20 px-6">
         <div className="max-w-4xl mx-auto">
-          {/* Page Header */}
+ 
           <div className="text-center mb-12">
             <div className="inline-block mb-4 px-6 py-2 bg-orange-500 text-white font-black text-sm tracking-widest rotate-[-1deg] shadow-lg border-4 border-orange-700">
               STEP 1 OF 2
@@ -89,7 +87,7 @@ export default function UploadPage() {
             </p>
           </div>
 
-          {/* Conditional Rendering: Show FileUploader or FilePreview */}
+          
           {!file ? (
             <FileUploader onFileSelect={handleFileSelect} />
           ) : (
@@ -101,7 +99,7 @@ export default function UploadPage() {
             />
           )}
 
-          {/* Back to Home Link */}
+   
           <div className="mt-8 text-center">
             <Link
               href="/"
