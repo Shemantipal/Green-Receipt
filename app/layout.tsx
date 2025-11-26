@@ -1,3 +1,12 @@
+import {
+  ClerkProvider,
+  SignInButton,
+  SignUpButton,
+  SignedIn,
+  SignedOut,
+  UserButton,
+} from '@clerk/nextjs'
+
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
@@ -23,12 +32,31 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
+     <ClerkProvider>
     <html lang="en">
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
+        <header className="flex justify-end items-center p-4 gap-4 h-16 bg-neutral-900">
+            <SignedOut>
+              <SignInButton>
+                <button className="relative bg-amber-400 hover:bg-amber-500 text-amber-950 font-bold py-3 px-8 -skew-x-12 border-2 border-amber-950 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-x-0.5 hover:translate-y-0.5 transition-all duration-150 uppercase tracking-wider">
+                  <span className="skew-x-12 block">Sign In</span>
+                </button>
+              </SignInButton>
+              <SignUpButton>
+                <button className="relative bg-gradient-to-r from-orange-500 via-amber-400 to-yellow-400 hover:from-orange-600 hover:via-amber-500 hover:to-yellow-500 text-neutral-900 font-bold py-3 px-8 -skew-x-12 border-2 border-neutral-900 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-x-0.5 hover:translate-y-0.5 transition-all duration-150 uppercase tracking-wider">
+                  <span className="skew-x-12 block">Sign Up</span>
+                </button>
+              </SignUpButton>
+            </SignedOut>
+            <SignedIn>
+              <UserButton />
+            </SignedIn>
+          </header>
         {children}
       </body>
     </html>
+    </ClerkProvider>
   );
 }
